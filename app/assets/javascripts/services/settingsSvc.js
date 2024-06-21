@@ -38,7 +38,7 @@ angular.module('QuepidApp')
           additionalFields: [],
           numberOfRows: 10,
           searchEngine: 'a2',
-          searchUrl: 'http://host.docker.internal:9208/_a2/search',
+          searchUrl: 'http://elasticsearch-data1:9200/_a2/search',
           urlFormat: null,
           proxyRequests: true,
           mapperCode: [
