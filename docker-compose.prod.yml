@@ -1,6 +1,3 @@
-# Docker Compose file for running Quepid in Production mode.
-# Allows you to update your Quepid installation over time.
-
 version: '3'
 services:
   mysql:
@@ -12,14 +9,16 @@ services:
       - MYSQL_ROOT_PASSWORD=password
     volumes:
       - ./volumes/mysql_data:/var/lib/mysql
+
   redis:
     container_name: quepid_prod_redis
     image: redis:7.2.0-alpine
     ports:
       - 6379:6379
+      
   app:
     container_name: quepid_prod_app
-    image: o19s/quepid:latest
+    image: quepid:prod
     #env_file:   # Use this approach if you would rather manage your environment settings elsewhere.
     #  - .env.prod
     environment:
@@ -48,22 +47,36 @@ services:
       - QUERY_LIST_SORTABLE=true
     command: "foreman s -f Procfile"
     ports:
-    #  - 80:3000 # Map to port 80 for outside users when you are not using Nginx
-      - 3000:3000
+      - 127.0.0.1:3000:3000
     links:
       - mysql
       - redis
     depends_on:
       - mysql
       - redis
-  nginx:
-    image: nginx:1.26.0-alpine-slim
-    container_name: quepid_nginx
-    ports:
-      - "443:8443"
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./.ssl/:/etc/nginx/certs
-    links:
-      - app
+    networks: 
+      - default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=reverse-proxy-network
+      - traefik.http.routers.quepid-router.entrypoints=https
+      - traefik.http.routers.quepid-router.rule=Host(`quepid.adelean.fr`)
+      - traefik.http.routers.quepid-router.tls=true
+      - traefik.http.routers.quepid-router.tls.certresolver=letsencrypt
+      - traefik.http.routers.quepid-router.middlewares=security-headers
+      - traefik.http.services.quepid-router.loadbalancer.server.port=3000
+
+#  nginx:
+#    image: nginx:1.26.0-alpine-slim
+#    container_name: quepid_nginx
+#    ports:
+#      - "443:8443"
+#      - "80:80"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#      - ./.ssl/:/etc/nginx/certs
+#    links:
+#      - app
+networks:
+  default:
+    name: reverse-proxy-network

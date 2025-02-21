@@ -590,7 +590,7 @@ angular.module('QuepidApp')
         $scope.pendingWizardSettings.newQueries = [];
 
         if(userSvc.getUser().completedCaseWizard===false){
-          $scope.pendingWizardSettings.caseName = 'Movies Search';
+          $scope.pendingWizardSettings.caseName = 'A2 Search case';
           // should we be setting up more here?
         } else {
           $log.info('Skipping welcome step for case wizard');
