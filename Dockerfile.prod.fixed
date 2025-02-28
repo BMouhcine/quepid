@@ -1,0 +1,81 @@
+FROM node:20-bullseye AS build-dep
+WORKDIR /srv/app
+COPY package.json yarn.lock ./
+RUN yarn install --production=true
+
+FROM ruby:3.3.2-bullseye
+
+LABEL maintainer="quepid_admin@opensourceconnections.com"
+
+ARG QUEPID_VERSION_VARIABLE
+ENV QUEPID_VERSION=$QUEPID_VERSION_VARIABLE
+
+# Must have packages
+RUN apt-get update -qq && apt-get install -y --no-install-recommends vim curl netcat \
+  && rm -rf /var/lib/apt/lists/*
+
+# Node Only
+RUN apt-get update -qq \
+  && apt-get install -y --no-install-recommends ca-certificates gnupg \
+  && mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && NODE_MAJOR=20 \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update -qq \
+  && apt-get install --no-install-recommends -y nodejs \
+  && apt remove yarn \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+WORKDIR /srv/app
+COPY Gemfile Gemfile.lock ./
+RUN gem install foreman
+RUN gem install bundler:2.5.11
+
+# Clean up Bundle
+RUN bundle config set without 'development test'
+RUN bundle config set deployment true
+RUN bundle install --jobs 4 && \
+  bundle clean --force && \
+  rm -rf /app/.bundle/cache && \
+  rm -rf /app/vendor/bundle/ruby/*/cache
+
+COPY --from=build-dep /srv/app/node_modules ./node_modules/
+#COPY . .
+COPY ./app ./app
+COPY ./app.json ./app.json
+COPY ./babel.config.js ./babel.config.js
+COPY ./bin ./bin
+COPY ./config ./config
+COPY ./config.ru ./config.ru
+COPY ./db ./db
+COPY ./Gemfile ./Gemfile
+COPY ./Gemfile.lock ./Gemfile.lock
+COPY ./lib ./lib
+COPY ./LICENSE ./LICENSE
+COPY ./package.json ./package.json
+COPY ./postcss.config.js ./postcss.config.js
+COPY ./Procfile ./Procfile
+
+# Exclude the /public/notebook directory
+COPY ./public/images ./public/images
+COPY ./public/javascripts ./public/javascripts
+COPY ./public/*.html ./public/
+COPY ./public/robots.txt ./public
+
+COPY ./Rakefile ./Rakefile
+COPY ./README.md ./README.md
+COPY ./vendor ./vendor
+COPY ./yarn.lock ./yarn.lock
+
+ADD https://github.com/o19s/quepid-jupyterlite/releases/latest/download/jupyter-lite-build.tgz ./notebooks.gz
+
+RUN mkdir -p tmp/pids
+
+# Also unpacks the ./notebooks.gz file
+RUN RAILS_ENV=production SECRET_KEY_BASE=fake_out_devise bundle exec rake assets:precompile
+
+# Remove some files not needed in resulting image
+RUN rm package.json yarn.lock
+
+CMD ["foreman", "s", "-f", "Procfile"]

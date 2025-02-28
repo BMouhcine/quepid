@@ -17,10 +17,13 @@ services:
       - .:/srv/app
       - ./log:/log
     ports:
-      - 127.0.0.1:3000:3000
+      - 3000:3000
     extra_hosts:
       - "outside:172.17.0.1"
       - "host.docker.internal:host-gateway"
+    networks:
+      - a2_main
+      - default
     links:
       - mysql
       - redis
@@ -29,24 +32,39 @@ services:
       - mysql
       - redis
       - keycloak
+    labels:
+        - traefik.enable=true
+        - traefik.docker.network=reverse-proxy-network
+        - traefik.http.routers.quepid-router.entrypoints=https
+        - traefik.http.routers.quepid-router.rule=Host(`quepid.adelean.fr`)
+        - traefik.http.routers.quepid-router.tls=true
+        - traefik.http.routers.quepid-router.tls.certresolver=letsencrypt
+        - traefik.http.routers.quepid-router.middlewares=security-headers
+        - traefik.http.services.quepid-router.loadbalancer.server.port=3000
 
   mysql:
     container_name: quepid_db
     image: mysql:8.3.0
     ports:
-      - 127.0.0.1:3306:3306
+      - 3306:3306
+    networks:
+      - a2_main
     environment:
       - MYSQL_ROOT_PASSWORD=password
 
   redis:
     container_name: quepid_redis
-    image: redis:7.2.0-alpine   
+    image: redis:7.2.0-alpine
+    networks:
+      - a2_main    
     ports:
-      - 127.0.0.1:6379:6379
+      - 6379:6379
 
   keycloak:
     image: chorus-keycloak
     container_name: keycloak
+    networks:
+      - a2_main
     build:
       context: ./keycloak
       dockerfile: Dockerfile
@@ -55,7 +73,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
     ports:
-      - 127.0.0.1:9080:9080
+      - 9080:9080
     environment:
       - KC_HTTP_ENABLED=true
       - KC_HTTP_PORT=9080
@@ -70,14 +88,22 @@ services:
       - ./keycloak/realm-config/quepid-realm.json:/opt/keycloak/data/import/quepid-realm.json:ro    
 
 
-  nginx:
-    image: nginx:1.26.0-alpine-slim
-    container_name: quepid_nginx
-    ports:
-      - "127.0.0.1:443:8443"
-      - "127.0.0.1:80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./.ssl/:/etc/nginx/certs
-    links:
-      - app
+#  nginx:
+#    image: nginx:1.26.0-alpine-slim
+#    container_name: quepid_nginx
+#    networks:
+#      - a2_main
+#    ports:
+#      - "443:8443"
+#      - "80:80"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#      - ./.ssl/:/etc/nginx/certs
+#    links:
+#      - app
+
+networks:
+  a2_main:
+    external: true
+  default:
+    name: reverse-proxy-network
